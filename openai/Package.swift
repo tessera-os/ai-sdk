@@ -1,6 +1,10 @@
 // swift-tools-version: 6.4
 import PackageDescription
 
+/// The AI SDK's release version, the same in its five packages. CI
+/// releases it when it names the current release week (RELEASES.md).
+let version: String = "26.10.4"
+
 let swiftSettings: [SwiftSetting] = [
   .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
   .enableUpcomingFeature("InferIsolatedConformances"),
