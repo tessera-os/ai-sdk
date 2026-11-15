@@ -576,8 +576,13 @@ func decodeOpenAIEvent(_ event: ServerSentEvent, assembly: inout StreamAssembly)
   guard !event.data.isEmpty else { return [] }
   let chunk: [String: JSONValue]
   do { chunk = try jsonObject(Data(event.data.utf8)) } catch {
+    var reason = "\(error)"
+    if case DecodingError.dataCorrupted(let context) = error, let underlying = context.underlyingError {
+      reason = "\(context.debugDescription) \(underlying)"
+    }
     throw AIError.malformed(
-      "An OpenAI stream chunk is not valid JSON: \(error.localizedDescription)")
+      "An OpenAI stream chunk (\(event.data.utf8.count) bytes) is not valid JSON: \(reason). Starts: "
+        + "\(event.data.prefix(160)) … ends: \(event.data.suffix(240))")
   }
   if let type = chunk["type"]?.stringValue, type.hasPrefix("response.") || type == "error" {
     return try decodeResponsesEvent(type: type, chunk: chunk, assembly: &assembly)

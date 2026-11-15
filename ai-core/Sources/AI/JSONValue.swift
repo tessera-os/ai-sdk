@@ -118,6 +118,40 @@ public indirect enum JSONValue: Codable, Sendable, Equatable {
   /// - Returns: The parsed JSON value.
   /// - Throws: A decoding error when the data is not valid JSON.
   public static func parse(_ data: Data) throws -> JSONValue {
-    try JSONDecoder().decode(JSONValue.self, from: data)
+    do {
+      return try JSONDecoder().decode(JSONValue.self, from: data)
+    } catch let decoding as DecodingError {
+      // Linux's JSONDecoder rejects some large documents providers send
+      // (OpenAI's `response.created`, which echoes the whole request) that
+      // JSONSerialization reads; a document both reject is invalid.
+      let object: Any
+      do {
+        object = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+      } catch {
+        throw AIError.malformed("Not valid JSON: \(decoding); JSONSerialization: \(error)")
+      }
+      return try value(of: object)
+    }
+  }
+
+  /// The JSON value of a `JSONSerialization` result.
+  private static func value(of object: Any) throws -> JSONValue {
+    switch object {
+    case is NSNull: return .null
+    case let string as String: return .string(string)
+    case let array as [Any]: return .array(try array.map(value(of:)))
+    case let dictionary as [String: Any]: return .object(try dictionary.mapValues(value(of:)))
+    case let number as NSNumber:
+      switch String(cString: number.objCType) {
+      case "c", "B": return .bool(number.boolValue)
+      case "d", "f": return .number(number.doubleValue)
+      default: return .integer(number.int64Value)
+      }
+    case let bool as Bool: return .bool(bool)
+    case let int as Int: return .integer(Int64(int))
+    case let double as Double: return .number(double)
+    default:
+      throw AIError.malformed("JSONSerialization produced a \(type(of: object)), not a JSON value.")
+    }
   }
 }
