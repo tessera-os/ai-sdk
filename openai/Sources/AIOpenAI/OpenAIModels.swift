@@ -16,12 +16,20 @@ func decodeOpenAIModelPage(status: Int, body: Data, service: Service) throws -> 
     throw openAIServiceError(status: status, error: error)
   }
   guard (200..<300).contains(status) else { throw AIError.status(status) }
-  guard case .array(let entries)? = document["data"] else {
-    throw AIError.malformed("The model list has no data array.")
+  // OpenAI's API lists `data` entries named by `id`; a ChatGPT plan's
+  // Codex-style list has `models` entries named by `slug`.
+  let entries: [JSONValue]
+  if case .array(let data)? = document["data"] {
+    entries = data
+  } else if case .array(let codex)? = document["models"] {
+    entries = codex
+  } else {
+    throw AIError.malformed(
+      "The model list has neither a data nor a models array (status \(status)): \(String(decoding: body.prefix(500), as: UTF8.self))")
   }
   var models: [ModelListing] = []
   for case .object(let entry) in entries {
-    guard let id = entry["id"]?.stringValue else { continue }
+    guard let id = entry["id"]?.stringValue ?? entry["slug"]?.stringValue else { continue }
     models.append(
       ModelListing(
         service: service, id: id, created: listedDate(entry["created"]),

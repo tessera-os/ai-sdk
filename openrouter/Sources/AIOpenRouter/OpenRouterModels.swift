@@ -48,7 +48,8 @@ func decodeOpenRouterModelPage(status: Int, body: Data) throws -> ModelPage {
   }
   guard (200..<300).contains(status) else { throw AIError.status(status) }
   guard case .array(let entries)? = document["data"] else {
-    throw AIError.malformed("The OpenRouter model list has no data array.")
+    throw AIError.malformed(
+      "The OpenRouter model list has no data array (status \(status)): \(String(decoding: body.prefix(500), as: UTF8.self))")
   }
   var models: [ModelListing] = []
   for case .object(let entry) in entries {

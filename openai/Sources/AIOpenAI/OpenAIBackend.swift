@@ -1,9 +1,10 @@
 import AI
 import Foundation
+import ModelBoard
+
 #if canImport(FoundationNetworking)
   import FoundationNetworking
 #endif
-import ModelBoard
 
 /// Service-specific choices layered on the chat-completions protocol.
 public struct OpenAIDialect: Sendable, Equatable {
@@ -22,6 +23,9 @@ public struct OpenAIDialect: Sendable, Equatable {
   /// Whether the service understands OpenAI's `prompt_cache_key`.
   public var sendsPromptCacheKey: Bool
 
+  /// Provider-specific fields sent on every request, such as chat template options.
+  public var additionalFields: [String: JSONValue]
+
   /// Creates options for a service that implements the OpenAI chat-completions shape.
   ///
   /// - Parameters:
@@ -30,16 +34,18 @@ public struct OpenAIDialect: Sendable, Equatable {
   ///   - fallbackMaxTokens: Default limit for requests without an explicit cap.
   ///   - reasoningEffort: How reasoning effort is sent. Defaults to not sent.
   ///   - sendsPromptCacheKey: Whether `PromptCaching.key` is sent as `prompt_cache_key`.
+  ///   - additionalFields: Fields included in every request body.
   public init(
     maxTokensField: String = "max_tokens", reasoningField: String? = nil,
     fallbackMaxTokens: Int = 4096, reasoningEffort: OpenAIReasoningParameter = .unsupported,
-    sendsPromptCacheKey: Bool = false
+    sendsPromptCacheKey: Bool = false, additionalFields: [String: JSONValue] = [:]
   ) {
     self.maxTokensField = maxTokensField
     self.reasoningField = reasoningField
     self.fallbackMaxTokens = fallbackMaxTokens
     self.reasoningEffort = reasoningEffort
     self.sendsPromptCacheKey = sendsPromptCacheKey
+    self.additionalFields = additionalFields
   }
 }
 
@@ -63,14 +69,13 @@ public struct OpenAIBackend: AIBackend {
   public let region: Region? = .global
 
   /// The service this backend connects to.
-  public let service: Service = .openAI
+  public let service: Service
 
   /// The wire protocol this backend speaks.
   public let apiProtocol: AIProtocol = .openAI
 
   /// OpenAI's chat-completions field names and defaults.
-  public let dialect = OpenAIDialect(
-    maxTokensField: "max_completion_tokens", reasoningEffort: .topLevel, sendsPromptCacheKey: true)
+  public let dialect: OpenAIDialect
 
   /// Creates a backend for OpenAI.
   ///
@@ -80,11 +85,18 @@ public struct OpenAIBackend: AIBackend {
   ///   - endpoint: Which API to use. Defaults to choosing per model.
   public init(
     apiKey: String, baseURL: String = "https://api.openai.com/v1",
-    endpoint: OpenAIEndpoint = .automatic
+    endpoint: OpenAIEndpoint = .automatic, service: Service = .openAI,
+    dialect: OpenAIDialect? = nil
   ) {
     self.apiKey = apiKey
     self.baseURL = baseURL
     self.endpoint = endpoint
+    self.service = service
+    self.dialect =
+      dialect
+      ?? OpenAIDialect(
+        maxTokensField: "max_completion_tokens", reasoningEffort: .topLevel,
+        sendsPromptCacheKey: true)
   }
 
   /// Encodes a canonical request as an OpenAI chat-completions POST.
@@ -266,6 +278,10 @@ private func openAIRequest(
     "model", "messages", "tools", "response_format", "stream", "stream_options",
     dialect.maxTokensField,
   ]
+  for (key, value) in dialect.additionalFields {
+    document[key] = value
+    reserved.insert(key)
+  }
   if !request.tools.isEmpty {
     document["tools"] = .array(request.tools.map(openAITool))
     if let choice = request.toolChoice { document["tool_choice"] = openAIChatToolChoice(choice) }
@@ -282,7 +298,13 @@ private func openAIRequest(
   }
   if let effort = request.reasoningEffort, dialect.reasoningEffort != .unsupported {
     let (key, value) = try dialect.reasoningEffort.field(for: effort)
-    document[key] = value
+    if key == "chat_template_kwargs", case .object(let additions) = value,
+      case .object(let existing)? = document[key]
+    {
+      document[key] = .object(existing.merging(additions) { _, new in new })
+    } else {
+      document[key] = value
+    }
     reserved.insert(key)
   }
   if dialect.sendsPromptCacheKey, let key = request.caching?.key {
@@ -482,7 +504,9 @@ func openAIServiceError(status: Int, error: JSONValue) -> AIError {
 private func openAIStreamStatus(kind: String?, code: JSONValue?) -> Int {
   let codeText = code?.stringValue ?? ""
   let names = [codeText, kind ?? ""]
-  if names.contains(where: { $0 == "rate_limit_exceeded" || $0 == "insufficient_quota" || $0.contains("rate_limit") }) {
+  if names.contains(where: {
+    $0 == "rate_limit_exceeded" || $0 == "insufficient_quota" || $0.contains("rate_limit")
+  }) {
     return 429
   }
   if names.contains("invalid_api_key") || kind == "authentication_error" { return 401 }

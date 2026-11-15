@@ -49,6 +49,8 @@ public enum OpenAIReasoningParameter: Sendable, Equatable {
   case topLevel
   /// A nested `reasoning` object, as OpenRouter takes it.
   case nested
+  /// NVIDIA NIM's `chat_template_kwargs` and `reasoning_budget` fields.
+  case nvidiaNIM
 
   /// Builds the request field for an effort.
   ///
@@ -60,8 +62,28 @@ public enum OpenAIReasoningParameter: Sendable, Equatable {
     switch (self, effort) {
     case (.nested, .budget(let tokens)):
       return ("reasoning", .object(["max_tokens": .integer(Int64(tokens))]))
+    case (.nvidiaNIM, .budget(let tokens)):
+      return ("reasoning_budget", .integer(Int64(tokens)))
     case (_, .budget):
       throw AIError.unsupportedCapability("reasoning token budget")
+    case (.nvidiaNIM, .off):
+      return ("chat_template_kwargs", .object(["enable_thinking": .bool(false)]))
+    case (.nvidiaNIM, .minimal), (.nvidiaNIM, .low):
+      return (
+        "chat_template_kwargs",
+        .object([
+          "enable_thinking": .bool(true), "low_effort": .bool(true),
+        ])
+      )
+    case (.nvidiaNIM, .medium):
+      return (
+        "chat_template_kwargs",
+        .object([
+          "enable_thinking": .bool(true), "medium_effort": .bool(true),
+        ])
+      )
+    case (.nvidiaNIM, _):
+      return ("chat_template_kwargs", .object(["enable_thinking": .bool(true)]))
     case (.nested, _):
       return ("reasoning", .object(["effort": .string(effort.openAIName)]))
     default:

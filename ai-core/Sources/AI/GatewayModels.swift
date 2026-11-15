@@ -49,7 +49,7 @@ extension Gateway {
   /// Lists one service's models with the first backend that answers.
   ///
   /// - Returns: Nil when no backend of the service can list models.
-  fileprivate func listModels(of service: Service) async -> Result<[ModelListing], AIError>? {
+  public func listModels(of service: Service) async -> Result<[ModelListing], AIError>? {
     var last: AIError?
     for backend in router.backends where backend.service == service {
       do {
