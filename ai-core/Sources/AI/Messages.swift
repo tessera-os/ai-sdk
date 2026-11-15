@@ -14,15 +14,41 @@ public struct TextPart: Codable, Sendable, Equatable {
 
 /// Image bytes and their media type.
 public struct ImagePart: Codable, Sendable, Equatable {
-  /// The image media type, such as image/png.
+  /// The image media type, such as image/png: the type the bytes show when
+  /// they are PNG, JPEG, GIF or WebP, whatever type the part was given.
+  /// Providers check the bytes against it and refuse a mismatch, such as a
+  /// PNG screenshot saved as `image/jpeg`.
   public var mediaType: String
   /// The encoded image bytes.
   public var data: Data
 
   /// Creates an image input or output part.
   public init(mediaType: String, data: Data) {
-    self.mediaType = mediaType
+    self.mediaType = Self.mediaType(of: data) ?? mediaType
     self.data = data
+  }
+
+  private enum CodingKeys: String, CodingKey { case mediaType, data }
+
+  /// Decodes a part, correcting a stored media type its bytes contradict.
+  public init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    self.init(
+      mediaType: try values.decode(String.self, forKey: .mediaType),
+      data: try values.decode(Data.self, forKey: .data))
+  }
+
+  /// The media type the image bytes show, or nil when they are none of PNG,
+  /// JPEG, GIF or WebP.
+  public static func mediaType(of data: Data) -> String? {
+    let head = [UInt8](data.prefix(12))
+    if head.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) { return "image/png" }
+    if head.starts(with: [0xFF, 0xD8, 0xFF]) { return "image/jpeg" }
+    if head.starts(with: Array("GIF87a".utf8)) || head.starts(with: Array("GIF89a".utf8)) { return "image/gif" }
+    if head.count == 12, head.starts(with: Array("RIFF".utf8)), Array(head[8..<12]) == Array("WEBP".utf8) {
+      return "image/webp"
+    }
+    return nil
   }
 }
 

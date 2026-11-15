@@ -38,18 +38,35 @@ public indirect enum JSONValue: Codable, Sendable, Equatable {
     let container = try decoder.singleValueContainer()
     if container.decodeNil() {
       self = .null
-    } else if let value = try? container.decode(Bool.self) {
+    } else if let value = try Self.decodeIfType(Bool.self, from: container) {
       self = .bool(value)
-    } else if let value = try? container.decode(Int64.self) {
+    } else if let value = try Self.decodeIfType(Int64.self, from: container) {
       self = .integer(value)
-    } else if let value = try? container.decode(Double.self) {
+    } else if let value = try Self.decodeIfType(Double.self, from: container) {
       self = .number(value)
-    } else if let value = try? container.decode(String.self) {
+    } else if let value = try Self.decodeIfType(String.self, from: container) {
       self = .string(value)
-    } else if let value = try? container.decode([JSONValue].self) {
+    } else if let value = try Self.decodeIfType([JSONValue].self, from: container) {
       self = .array(value)
     } else {
       self = .object(try container.decode([String: JSONValue].self))
+    }
+  }
+
+  /// Decodes `type` from the container, or answers nil when the value in it is
+  /// not of that type.
+  ///
+  /// Probing for the JSON type of a value is how `init(from:)` finds the case:
+  /// a type mismatch (or a number that does not fit, which decoders report as
+  /// corrupted data) is the expected "not this one". The last probe in
+  /// `init(from:)` decodes without it, so genuinely invalid input still throws.
+  private static func decodeIfType<Value: Decodable>(
+    _ type: Value.Type, from container: any SingleValueDecodingContainer
+  ) throws -> Value? {
+    do {
+      return try container.decode(type)
+    } catch DecodingError.typeMismatch, DecodingError.dataCorrupted {
+      return nil
     }
   }
 

@@ -12,17 +12,21 @@ let swiftSettings: [SwiftSetting] = [
   .enableUpcomingFeature("MemberImportVisibility"),
 ]
 
+/// Fails the build on `try?` and on an empty `catch` (AGENTS.md, Errors).
+let errorCheck: [Target.PluginUsage] = [.plugin(name: "SwallowedErrorCheck", package: "swallowed-error-check")]
+
 let package = Package(
   name: "AIOpenRouter",
   platforms: [.macOS(.v13), .iOS(.v16), .tvOS(.v16), .watchOS(.v9)],
   products: [.library(name: "AIOpenRouter", targets: ["AIOpenRouter"])],
-  dependencies: [.package(path: "../ai-core"), .package(path: "../../model-board"), .package(path: "../openai")],
+  dependencies: [.package(path: "../ai-core"), .package(path: "../../model-board"), .package(path: "../openai"), .package(path: "../../swallowed-error-check")],
   targets: [
-    .target(name: "AIOpenRouter", dependencies: [.product(name: "AI", package: "ai-core"), .product(name: "ModelBoard", package: "model-board"), .product(name: "AIOpenAI", package: "openai")], swiftSettings: swiftSettings),
+    .target(name: "AIOpenRouter", dependencies: [.product(name: "AI", package: "ai-core"), .product(name: "ModelBoard", package: "model-board"), .product(name: "AIOpenAI", package: "openai")], swiftSettings: swiftSettings, plugins: errorCheck),
     .testTarget(
       name: "AIOpenRouterTests",
       dependencies: [.product(name: "AI", package: "ai-core"), .product(name: "ModelBoard", package: "model-board"), "AIOpenRouter"],
-      swiftSettings: swiftSettings
+      swiftSettings: swiftSettings,
+      plugins: errorCheck
     ),
   ],
   swiftLanguageModes: [.v6]

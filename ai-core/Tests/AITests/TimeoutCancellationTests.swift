@@ -70,7 +70,9 @@ import Testing
     }
     while await transport.requestedKeys.isEmpty { await Task.yield() }
     task.cancel()
-    _ = try? await task.value
+    // The consumer may finish with its count or with a cancellation error;
+    // either way the stream ended, which is all this test needs.
+    _ = await task.result
     #expect(await transport.requestedKeys.count == 1)
   }
 }

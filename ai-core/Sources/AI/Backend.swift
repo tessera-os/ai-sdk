@@ -389,18 +389,21 @@ private struct PendingTool: Sendable {
 ///
 /// - Parameter response: The completed response to expand.
 /// - Returns: Bracketed output events followed by usage and completion.
-public func eventsOf(_ response: Response) -> [StreamEvent] {
+/// - Throws: An encoding error if a tool call's input cannot be encoded as JSON.
+public func eventsOf(_ response: Response) throws -> [StreamEvent] {
   var events: [StreamEvent] = []
   for item in response.output {
     switch item {
     case .text(let part): events += [.textStart, .textDelta(part), .textEnd]
     case .reasoning(let part): events += [.reasoningStart, .reasoningDelta(part), .reasoningEnd]
     case .call(let call):
+      let inputData = try call.input.encoded()
+      guard let inputJSON = String(data: inputData, encoding: .utf8) else {
+        throw AIError.malformed("The input of tool call \(call.id) could not be encoded as UTF-8.")
+      }
       events += [
         .toolCallStart(ToolCallOpened(id: call.id, name: call.name)),
-        .toolCallDelta(
-          ToolInputDelta(
-            id: call.id, json: (try? String(data: call.input.encoded(), encoding: .utf8)) ?? "{}")),
+        .toolCallDelta(ToolInputDelta(id: call.id, json: inputJSON)),
         .toolCallEnd(call),
       ]
     case .image, .audio, .object: break

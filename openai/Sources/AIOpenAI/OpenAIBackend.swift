@@ -338,7 +338,7 @@ private func openAIMessages(_ request: Request, dialect: OpenAIDialect) throws -
         switch output {
         case .text(let part): text += part.text
         case .reasoning(let part): reasoning += part.text
-        case .call(let call): calls.append(openAICall(call))
+        case .call(let call): calls.append(try openAICall(call))
         case .object(let value): text += try jsonText(value)
         case .image, .audio: break
         }
@@ -422,13 +422,13 @@ private func openAITool(_ tool: Tool) -> JSONValue {
   ])
 }
 
-private func openAICall(_ call: ToolCall) -> JSONValue {
+private func openAICall(_ call: ToolCall) throws -> JSONValue {
   .object([
     "id": .string(call.id),
     "type": .string("function"),
     "function": .object([
       "name": .string(call.name),
-      "arguments": .string((try? jsonText(call.input)) ?? "{}"),
+      "arguments": .string(try jsonText(call.input)),
     ]),
   ])
 }

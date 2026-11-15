@@ -286,7 +286,7 @@ public struct Gateway: Sendable {
         isEventStream(head: head, body: body)
         ? try fold(events: body, backend: route.backend, model: request.model)
         : try route.backend.decode(status: head.status, body: body, model: request.model)
-      for event in eventsOf(result) { emit(event) }
+      for event in try eventsOf(result) { emit(event) }
       return
     }
 
